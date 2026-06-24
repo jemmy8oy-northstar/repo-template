@@ -10,6 +10,8 @@ Run the following command to scaffold a new project:
 dotnet new web-template -n YourProjectName --appName your-project-name --force
 ```
 
+After scaffolding, push the generated code to a feature branch and raise a PR into `dev`. Do not raise PRs directly into `main` — the branch protection rules will block it.
+
 ## Workflow Files
 
 This template includes four pre-configured GitHub Actions workflows. **Do not modify or delete these** — they are correct as checked in and serve as the default for every project created from this template.
