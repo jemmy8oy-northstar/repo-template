@@ -1,13 +1,37 @@
-# Create New Repo From .NET Template
+# .NET Repo Template
 
-dotnet new web-template -n YourProjectName --appName your-project-name -o your-project-name --force
+A GitHub repository template for full-stack .NET + Node.js projects with CI, Docker builds, GitOps, and Claude Code integration pre-configured.
 
-# Branch Rules
+## Creating a New Project From This Template
 
-Use this to create branch rules:
+Run the following command to scaffold a new project:
 
 ```
+dotnet new web-template -n YourProjectName --appName your-project-name --force
+```
 
+## Workflow Files
+
+This template includes four pre-configured GitHub Actions workflows. **Do not modify or delete these** — they are correct as checked in and serve as the default for every project created from this template.
+
+| File | Purpose |
+|------|---------|
+| `ci.yml` | Builds backend (.NET) and frontend (Node.js) on every pull request |
+| `check-source-branch.yml` | Enforces that PRs into `main` must come from `dev` |
+| `docker-build-push.yml` | Builds and pushes ARM64 Docker images to Oracle Container Registry (OCIR), then auto-bumps the Helm chart version via GitOps |
+| `claude.yml` | Enables `@claude` mentions in issues and PRs to trigger Claude Code |
+
+### Important: Claude Cannot Push Workflow Files
+
+GitHub blocks the default Actions token from writing to `.github/workflows/`. This means if Claude is used to scaffold or modify a project, it **cannot push changes to workflow files**. This is intentional GitHub security behaviour, not a bug.
+
+**What to do:** Let Claude push all other project files (source code, configs, Dockerfiles, Helm charts, etc.) and leave the workflow files untouched. The workflows in this template are already correct and will work without modification.
+
+## Branch Protection Rules
+
+Apply the following ruleset in **Settings → Rules → Rulesets → New ruleset**:
+
+```json
 {
   "name": "Protected Branches",
   "target": "branch",
@@ -69,8 +93,23 @@ Use this to create branch rules:
     }
   ]
 }
-
-```
-```
 ```
 
+This enforces:
+- `main` and `dev` cannot be deleted or force-pushed
+- All changes to `main` must go through a PR from `dev` (enforced by `check-source-branch.yml`)
+- PRs must pass the `verify-branch` status check before merging
+
+## Required Secrets and Variables
+
+For the Docker build workflow to function, configure the following in **Settings → Secrets and variables**:
+
+| Type | Name | Value |
+|------|------|-------|
+| Variable | `OCIR_REGISTRY` | e.g. `lhr.ocir.io` |
+| Variable | `OCIR_NAMESPACE` | Your OCI tenancy namespace |
+| Secret | `OCIR_USERNAME` | e.g. `tenancy/oracleidentitycloudservice/you@email.com` |
+| Secret | `OCIR_AUTH_TOKEN` | OCI auth token (not your account password) |
+| Secret | `CLAUDE_CODE_OAUTH_TOKEN` | OAuth token for Claude Code GitHub Actions |
+
+The `GIT_OPS_APP_ID` variable and `GITOPS_APP_PRIVATE_KEY` secret are pulled from org-level settings and do not need to be set per-repo.
