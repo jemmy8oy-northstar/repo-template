@@ -7,14 +7,17 @@ A GitHub repository template for full-stack .NET + Node.js projects with CI, Doc
 Run the following command to scaffold a new project:
 
 ```
-dotnet new web-template -n YourProjectName --appName your-project-name --force
+dotnet new web-template -n YourProjectName --appName your-project-name --no-includeWorkflows --force
 ```
+
+- `--no-includeWorkflows` skips the workflow files so the ones already in this repo are preserved as-is
+- `--force` allows the template to overwrite existing files — this README will be replaced, which is expected
 
 After scaffolding, push the generated code to a feature branch and raise a PR into `dev`. Do not raise PRs directly into `main` — the branch protection rules will block it.
 
 ## Workflow Files
 
-This template includes four pre-configured GitHub Actions workflows. **Do not modify or delete these** — they are correct as checked in and serve as the default for every project created from this template.
+This template includes four pre-configured GitHub Actions workflows that are intentionally excluded from the scaffold command above.
 
 | File | Purpose |
 |------|---------|
@@ -22,12 +25,6 @@ This template includes four pre-configured GitHub Actions workflows. **Do not mo
 | `check-source-branch.yml` | Enforces that PRs into `main` must come from `dev` |
 | `docker-build-push.yml` | Builds and pushes ARM64 Docker images to Oracle Container Registry (OCIR), then auto-bumps the Helm chart version via GitOps |
 | `claude.yml` | Enables `@claude` mentions in issues and PRs to trigger Claude Code |
-
-### Important: Claude Cannot Push Workflow Files
-
-GitHub blocks the default Actions token from writing to `.github/workflows/`. This means if Claude is used to scaffold or modify a project, it **cannot push changes to workflow files**. This is intentional GitHub security behaviour, not a bug.
-
-**What to do:** Let Claude push all other project files (source code, configs, Dockerfiles, Helm charts, etc.) and leave the workflow files untouched. The workflows in this template are already correct and will work without modification.
 
 ## Branch Protection Rules
 
