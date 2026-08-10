@@ -31,7 +31,12 @@ GitHub blocks the default Actions token from writing to `.github/workflows/`. Th
 
 ## Branch Protection Rules
 
-Apply the following ruleset in **Settings → Rules → Rulesets → New ruleset**:
+Apply **two** rulesets in **Settings → Rules → Rulesets → New ruleset**. They have to be two,
+not one: rulesets stack, and stacking only ever *adds* restrictions, so a single ruleset covering
+both branches cannot require a status check on `main` and not on `dev`. Requiring it on both is
+the trap — see [Why two rulesets](#why-two-rulesets) below.
+
+### 1. `Protected Branches` — `main` and `dev`
 
 ```json
 {
@@ -68,18 +73,6 @@ Apply the following ruleset in **Settings → Rules → Rulesets → New ruleset
           "merge"
         ]
       }
-    },
-    {
-      "type": "required_status_checks",
-      "parameters": {
-        "strict_required_status_checks_policy": false,
-        "do_not_enforce_on_create": false,
-        "required_status_checks": [
-          {
-            "context": "verify-branch"
-          }
-        ]
-      }
     }
   ],
   "bypass_actors": [
@@ -97,10 +90,58 @@ Apply the following ruleset in **Settings → Rules → Rulesets → New ruleset
 }
 ```
 
-This enforces:
+### 2. `Main promotion gate` — `main` only
+
+```json
+{
+  "name": "Main promotion gate",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": [
+        "refs/heads/main"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": false,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          {
+            "context": "verify-branch"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+Together these enforce:
 - `main` and `dev` cannot be deleted or force-pushed
-- All changes to `main` must go through a PR from `dev` (enforced by `check-source-branch.yml`)
-- PRs must pass the `verify-branch` status check before merging
+- All changes to either branch go through a pull request
+- PRs into `main` must pass the `verify-branch` status check, which is what enforces that they
+  come from `dev` (`check-source-branch.yml`)
+
+### Why two rulesets
+
+`check-source-branch.yml` only triggers `on: pull_request: branches: [main]`. It never runs for a
+PR into `dev`, so it never posts a `verify-branch` status there.
+
+If a single ruleset requires the `verify-branch` context on `main` **and** `dev`, every
+`feature → dev` pull request waits forever on a check that will never report, and the only way to
+merge is an admin override. That is not a visible failure — the PR simply sits at "Expected —
+waiting for status to be reported" — so it reads as a flaky CI rather than a misconfiguration, and
+overriding it becomes routine.
+
+Splitting the required check onto a `main`-only ruleset removes the dead wait without weakening
+anything: `main` still cannot be reached except by a PR from `dev`, and `dev` still cannot be
+deleted, force-pushed, or written to outside a PR.
 
 ## Required Secrets and Variables
 
