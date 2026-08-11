@@ -23,6 +23,10 @@ concurrency:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    # Skipped in the template repo itself, which has no backend/ or frontend/
+    # to build. In a repo created from this template the condition is always
+    # true, so the job always runs — it never silently skips real code.
+    if: ${{ github.repository != 'jemmy8oy-northstar/repo-template' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -49,6 +53,7 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
+    if: ${{ github.repository != 'jemmy8oy-northstar/repo-template' }}
     defaults:
       run:
         working-directory: ./frontend
@@ -73,6 +78,7 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    if: ${{ github.repository != 'jemmy8oy-northstar/repo-template' }}
     defaults:
       run:
         working-directory: ./frontend
