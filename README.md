@@ -18,115 +18,50 @@ This template includes four pre-configured GitHub Actions workflows. **Do not mo
 
 | File | Purpose |
 |------|---------|
-| `ci.yml` | Builds backend (.NET) and frontend (Node.js) on every pull request |
+| `ci.yml` | Builds **and tests** backend (.NET) and frontend (Node.js), plus Playwright e2e, on every pull request |
 | `check-source-branch.yml` | Enforces that PRs into `main` must come from `dev` |
 | `docker-build-push.yml` | Builds and pushes ARM64 Docker images to Oracle Container Registry (OCIR), then auto-bumps the Helm chart version via GitOps |
 | `claude.yml` | Enables `@claude` mentions in issues and PRs to trigger Claude Code |
 
-### Important: Claude Cannot Push Workflow Files
+### Note: Writing to `.github/workflows/` needs an explicit permission
 
-GitHub blocks the default Actions token from writing to `.github/workflows/`. This means if Claude is used to scaffold or modify a project, it **cannot push changes to workflow files**. This is intentional GitHub security behaviour, not a bug.
+A GitHub App can only create or update files under `.github/workflows/` if it has been granted
+**Workflows: Read & write**; without it the push is rejected outright. That is intentional GitHub
+security behaviour, not a bug — a token that can rewrite CI can change what runs against your
+secrets.
 
-**What to do:** Let Claude push all other project files (source code, configs, Dockerfiles, Helm charts, etc.) and leave the workflow files untouched. The workflows in this template are already correct and will work without modification.
+So unless that permission is currently granted, let Claude push everything else (source, configs,
+Dockerfiles, Helm charts) and hand you any workflow change as file contents to commit yourself. The
+workflows in this template are already correct and need no modification for a normal project.
 
 ## Branch Protection Rules
 
-Apply **two** rulesets in **Settings → Rules → Rulesets → New ruleset**. They have to be two,
-not one: rulesets stack, and stacking only ever *adds* restrictions, so a single ruleset covering
-both branches cannot require a status check on `main` and not on `dev`. Requiring it on both is
-the trap — see [Why two rulesets](#why-two-rulesets) below.
+Apply **two** rulesets in **Settings → Rules → Rulesets → New ruleset → Import a ruleset**,
+using the JSON checked into this template:
 
-### 1. `Protected Branches` — `main` and `dev`
+| File | Applies to | What it enforces |
+|------|------------|------------------|
+| [`docs/rulesets/protected-branches.json`](docs/rulesets/protected-branches.json) | `main` + `dev` | No deletion, no force-push, changes only via PR, **and CI must pass** |
+| [`docs/rulesets/main-promotion-gate.json`](docs/rulesets/main-promotion-gate.json) | `main` only | The PR must come from `dev` (`verify-branch`), **and it needs an approving review** |
 
-```json
-{
-  "name": "Protected Branches",
-  "target": "branch",
-  "enforcement": "active",
-  "conditions": {
-    "ref_name": {
-      "exclude": [],
-      "include": [
-        "refs/heads/main",
-        "refs/heads/dev"
-      ]
-    }
-  },
-  "rules": [
-    {
-      "type": "deletion"
-    },
-    {
-      "type": "non_fast_forward"
-    },
-    {
-      "type": "pull_request",
-      "parameters": {
-        "required_approving_review_count": 0,
-        "dismiss_stale_reviews_on_push": false,
-        "required_reviewers": [],
-        "require_code_owner_review": false,
-        "require_last_push_approval": false,
-        "required_review_thread_resolution": false,
-        "allowed_merge_methods": [
-          "rebase",
-          "merge"
-        ]
-      }
-    }
-  ],
-  "bypass_actors": [
-    {
-      "actor_id": 5,
-      "actor_type": "RepositoryRole",
-      "bypass_mode": "always"
-    },
-    {
-      "actor_id": 4070856,
-      "actor_type": "Integration",
-      "bypass_mode": "always"
-    }
-  ]
-}
-```
-
-### 2. `Main promotion gate` — `main` only
-
-```json
-{
-  "name": "Main promotion gate",
-  "target": "branch",
-  "enforcement": "active",
-  "conditions": {
-    "ref_name": {
-      "exclude": [],
-      "include": [
-        "refs/heads/main"
-      ]
-    }
-  },
-  "rules": [
-    {
-      "type": "required_status_checks",
-      "parameters": {
-        "strict_required_status_checks_policy": false,
-        "do_not_enforce_on_create": false,
-        "required_status_checks": [
-          {
-            "context": "verify-branch"
-          }
-        ]
-      }
-    }
-  ]
-}
-```
+They were inlined in this README until now, which meant two copies drifting apart. The files are
+the source of truth; see [`docs/rulesets/README.md`](docs/rulesets/README.md) for the full notes.
 
 Together these enforce:
 - `main` and `dev` cannot be deleted or force-pushed
 - All changes to either branch go through a pull request
-- PRs into `main` must pass the `verify-branch` status check, which is what enforces that they
-  come from `dev` (`check-source-branch.yml`)
+- Every PR is gated on the `backend`, `frontend` and `e2e` checks from `ci.yml`
+- PRs into `main` must come from `dev` (the `verify-branch` check) and be approved by a maintainer
+
+### Import them only after CI has run once
+
+`protected-branches.json` requires the `backend`, `frontend` and `e2e` contexts. A required context
+that has never been reported does not fail — it sits at *"Expected — waiting for status to be
+reported"* forever, and there is no way to merge past it except an admin override. Merge a PR that
+runs `ci.yml` first, then import.
+
+The context strings must match the **job ids** in `ci.yml` exactly, and you should delete the ones a
+repo doesn't have — requiring `frontend` in a backend-only repo blocks every PR.
 
 ### Why two rulesets
 
@@ -142,6 +77,9 @@ overriding it becomes routine.
 Splitting the required check onto a `main`-only ruleset removes the dead wait without weakening
 anything: `main` still cannot be reached except by a PR from `dev`, and `dev` still cannot be
 deleted, force-pushed, or written to outside a PR.
+
+Rulesets stack, and stacking only ever *adds* restrictions — which is why the split is necessary
+rather than merely tidy.
 
 ## Required Secrets and Variables
 
