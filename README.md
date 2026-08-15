@@ -7,14 +7,17 @@ A GitHub repository template for full-stack .NET + Node.js projects with CI, Doc
 Run the following command to scaffold a new project:
 
 ```
-dotnet new web-template -n YourProjectName --appName your-project-name --force
+dotnet new web-template -n YourProjectName --appName your-project-name --no-includeWorkflows --force
 ```
+
+- `--no-includeWorkflows` skips the workflow files so the ones already in this repo are preserved as-is
+- `--force` allows the template to overwrite existing files — this README will be replaced, which is expected
 
 After scaffolding, push the generated code to a feature branch and raise a PR into `dev`. Do not raise PRs directly into `main` — the branch protection rules will block it.
 
 ## Workflow Files
 
-This template includes four pre-configured GitHub Actions workflows. **Do not modify or delete these** — they are correct as checked in and serve as the default for every project created from this template.
+This template includes four pre-configured GitHub Actions workflows that are intentionally excluded from the scaffold command above.
 
 | File | Purpose |
 |------|---------|
