@@ -21,83 +21,68 @@ This template includes four pre-configured GitHub Actions workflows that are int
 
 | File | Purpose |
 |------|---------|
-| `ci.yml` | Builds backend (.NET) and frontend (Node.js) on every pull request |
+| `ci.yml` | Builds **and tests** backend (.NET) and frontend (Node.js), plus Playwright e2e, on every pull request |
 | `check-source-branch.yml` | Enforces that PRs into `main` must come from `dev` |
 | `docker-build-push.yml` | Builds and pushes ARM64 Docker images to Oracle Container Registry (OCIR), then auto-bumps the Helm chart version via GitOps |
 | `claude.yml` | Enables `@claude` mentions in issues and PRs to trigger Claude Code |
 
+### Note: Writing to `.github/workflows/` needs an explicit permission
+
+A GitHub App can only create or update files under `.github/workflows/` if it has been granted
+**Workflows: Read & write**; without it the push is rejected outright. That is intentional GitHub
+security behaviour, not a bug — a token that can rewrite CI can change what runs against your
+secrets.
+
+So unless that permission is currently granted, let Claude push everything else (source, configs,
+Dockerfiles, Helm charts) and hand you any workflow change as file contents to commit yourself. The
+workflows in this template are already correct and need no modification for a normal project.
+
 ## Branch Protection Rules
 
-Apply the following ruleset in **Settings → Rules → Rulesets → New ruleset**:
+Apply **two** rulesets in **Settings → Rules → Rulesets → New ruleset → Import a ruleset**,
+using the JSON checked into this template:
 
-```json
-{
-  "name": "Protected Branches",
-  "target": "branch",
-  "enforcement": "active",
-  "conditions": {
-    "ref_name": {
-      "exclude": [],
-      "include": [
-        "refs/heads/main",
-        "refs/heads/dev"
-      ]
-    }
-  },
-  "rules": [
-    {
-      "type": "deletion"
-    },
-    {
-      "type": "non_fast_forward"
-    },
-    {
-      "type": "pull_request",
-      "parameters": {
-        "required_approving_review_count": 0,
-        "dismiss_stale_reviews_on_push": false,
-        "required_reviewers": [],
-        "require_code_owner_review": false,
-        "require_last_push_approval": false,
-        "required_review_thread_resolution": false,
-        "allowed_merge_methods": [
-          "rebase",
-          "merge"
-        ]
-      }
-    },
-    {
-      "type": "required_status_checks",
-      "parameters": {
-        "strict_required_status_checks_policy": false,
-        "do_not_enforce_on_create": false,
-        "required_status_checks": [
-          {
-            "context": "verify-branch"
-          }
-        ]
-      }
-    }
-  ],
-  "bypass_actors": [
-    {
-      "actor_id": 5,
-      "actor_type": "RepositoryRole",
-      "bypass_mode": "always"
-    },
-    {
-      "actor_id": 4070856,
-      "actor_type": "Integration",
-      "bypass_mode": "always"
-    }
-  ]
-}
-```
+| File | Applies to | What it enforces |
+|------|------------|------------------|
+| [`docs/rulesets/protected-branches.json`](docs/rulesets/protected-branches.json) | `main` + `dev` | No deletion, no force-push, changes only via PR, **and CI must pass** |
+| [`docs/rulesets/main-promotion-gate.json`](docs/rulesets/main-promotion-gate.json) | `main` only | The PR must come from `dev` (`verify-branch`), **and it needs an approving review** |
 
-This enforces:
+They were inlined in this README until now, which meant two copies drifting apart. The files are
+the source of truth; see [`docs/rulesets/README.md`](docs/rulesets/README.md) for the full notes.
+
+Together these enforce:
 - `main` and `dev` cannot be deleted or force-pushed
-- All changes to `main` must go through a PR from `dev` (enforced by `check-source-branch.yml`)
-- PRs must pass the `verify-branch` status check before merging
+- All changes to either branch go through a pull request
+- Every PR is gated on the `backend`, `frontend` and `e2e` checks from `ci.yml`
+- PRs into `main` must come from `dev` (the `verify-branch` check) and be approved by a maintainer
+
+### Import them only after CI has run once
+
+`protected-branches.json` requires the `backend`, `frontend` and `e2e` contexts. A required context
+that has never been reported does not fail — it sits at *"Expected — waiting for status to be
+reported"* forever, and there is no way to merge past it except an admin override. Merge a PR that
+runs `ci.yml` first, then import.
+
+The context strings must match the **job ids** in `ci.yml` exactly, and you should delete the ones a
+repo doesn't have — requiring `frontend` in a backend-only repo blocks every PR.
+
+### Why two rulesets
+
+`check-source-branch.yml` only triggers `on: pull_request: branches: [main]`. It never runs for a
+PR into `dev`, so it never posts a `verify-branch` status there.
+
+If a single ruleset requires the `verify-branch` context on `main` **and** `dev`, every
+`feature → dev` pull request waits forever on a check that will never report, and the only way to
+merge is an admin override. That is not a visible failure — the PR simply sits at "Expected —
+waiting for status to be reported" — so it reads as a flaky CI rather than a misconfiguration, and
+overriding it becomes routine.
+
+Splitting the required check onto a `main`-only ruleset removes the dead wait without weakening
+anything: `main` still cannot be reached except by a PR from `dev`, and `dev` still cannot be
+deleted, force-pushed, or written to outside a PR.
+
+Rulesets stack, and stacking only ever *adds* restrictions — which is why the split is necessary
+rather than merely tidy.
 
 ## Required Secrets and Variables
 
